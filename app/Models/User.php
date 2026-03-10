@@ -94,7 +94,7 @@ class User extends Authenticatable implements MustVerifyEmail
         	$decimal_number = 2;
         }
 
-        
+
 
         return (($settings['site_currency_symbol_position'] == "pre") ? $settings['site_currency_symbol'] : '') . number_format($price, $settings['decimal_number']) . (($settings['site_currency_symbol_position'] == "post") ? $settings['site_currency_symbol'] : '');
     }
@@ -128,7 +128,7 @@ class User extends Authenticatable implements MustVerifyEmail
     }
 
     public function getProfileAttribute()
-    {   
+    {
         if(!empty($this->avatar) && \Storage::exists($this->avatar))
         {
             return $this->attributes['avatar'] = asset(\Storage::url($this->avatar));
@@ -309,7 +309,7 @@ class User extends Authenticatable implements MustVerifyEmail
         $settings = Utility::settings();
         return $settings["contract_prefix"] . sprintf("%05d", $number);
     }
-    
+
     public function countUsers()
     {
         return User::where('type', '!=', 'super admin')->where('type', '!=', 'company')->where('created_by', '=', $this->creatorId())->count();
@@ -376,55 +376,65 @@ class User extends Authenticatable implements MustVerifyEmail
 
     public function todayExpense()
     {
-        $payment = Payment::where('created_by', '=', $this->creatorId())->where('created_by', \Auth::user()->creatorId())->whereRaw('Date(date) = CURDATE()')->sum('amount');
+        $payment = Payment::where('created_by', $this->creatorId())
+            ->whereDate('date', today())
+            ->sum('amount');
 
-        $bills = Bill:: select('*')->where('created_by', \Auth::user()->creatorId())->whereRAW('Date(send_date) = CURDATE()')->get();
+        $bills = Bill::where('created_by', $this->creatorId())
+            ->whereDate('send_date', today())
+            ->get();
 
-        $billArray = array();
-        foreach($bills as $bill)
-        {
-            $billArray[] = $bill->getTotal();
-        }
+        $billTotal = $bills->sum(function ($bill) {
+            return $bill->getTotal();
+        });
 
-        $totalExpense = (!empty($payment) ? $payment : 0) + (!empty($billArray) ? array_sum($billArray) : 0);
-
-        return $totalExpense;
+        return $payment + $billTotal;
     }
 
     public function incomeCurrentMonth()
     {
         $currentMonth = date('m');
-        $revenue      = Revenue::where('created_by', '=', $this->creatorId())->whereRaw('MONTH(date) = ?', [$currentMonth])->sum('amount');
+        $currentYear  = date('Y');
 
-        $invoices = Invoice:: select('*')->where('created_by', \Auth::user()->creatorId())->whereRAW('MONTH(send_date) = ?', [$currentMonth])->get();
+        $revenue = Revenue::where('created_by', $this->creatorId())
+            ->whereMonth('date', $currentMonth)
+            ->whereYear('date', $currentYear)
+            ->sum('amount');
 
-        $invoiceArray = array();
-        foreach($invoices as $invoice)
-        {
-            $invoiceArray[] = $invoice->getTotal();
+        $invoices = Invoice::where('created_by', $this->creatorId())
+            ->whereMonth('send_date', $currentMonth)
+            ->whereYear('send_date', $currentYear)
+            ->get();
+
+        $invoiceTotal = 0;
+
+        foreach ($invoices as $invoice) {
+            $invoiceTotal += $invoice->getTotal();
         }
-        $totalIncome = (!empty($revenue) ? $revenue : 0) + (!empty($invoiceArray) ? array_sum($invoiceArray) : 0);
 
-        return $totalIncome;
-
+        return $revenue + $invoiceTotal;
     }
 
     public function expenseCurrentMonth()
     {
         $currentMonth = date('m');
+        $currentYear  = date('Y');
 
-        $payment = Payment::where('created_by', '=', $this->creatorId())->whereRaw('MONTH(date) = ?', [$currentMonth])->sum('amount');
+        $payment = Payment::where('created_by', $this->creatorId())
+            ->whereMonth('date', $currentMonth)
+            ->whereYear('date', $currentYear)
+            ->sum('amount');
 
-        $bills     = Bill:: select('*')->where('created_by', \Auth::user()->creatorId())->whereRAW('MONTH(send_date) = ?', [$currentMonth])->get();
-        $billArray = array();
-        foreach($bills as $bill)
-        {
-            $billArray[] = $bill->getTotal();
-        }
+        $bills = Bill::where('created_by', $this->creatorId())
+            ->whereMonth('send_date', $currentMonth)
+            ->whereYear('send_date', $currentYear)
+            ->get();
 
-        $totalExpense = (!empty($payment) ? $payment : 0) + (!empty($billArray) ? array_sum($billArray) : 0);
+        $billTotal = $bills->sum(function ($bill) {
+            return $bill->getTotal();
+        });
 
-        return $totalExpense;
+        return $payment + $billTotal;
     }
 
     public function getincExpBarChartData()
@@ -664,7 +674,7 @@ class User extends Authenticatable implements MustVerifyEmail
     {
         // Make Entry In User_Email_Template
         $allEmail = EmailTemplate::all();
-    
+
         foreach ($allEmail as $email) {
             UserEmailTemplate::create(
                 [
@@ -709,7 +719,7 @@ class User extends Authenticatable implements MustVerifyEmail
             'Retainer Sent',
             'Customer Retainer Sent',
             'New Retainer Payment',
-            
+
         ];
 
         foreach($emailTemplate as $eTemp)
@@ -880,7 +890,7 @@ class User extends Authenticatable implements MustVerifyEmail
                     <p>{company_name}</p>
                     <p>&nbsp;</p>
                     <p>{app_url}</p>',
-                
+
                 ],
             ],
             'customer_invoice_sent' => [
